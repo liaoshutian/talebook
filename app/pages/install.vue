@@ -181,8 +181,7 @@ const check_install = () => {
             // But let's follow logic: reload user/sys info then push
             setTimeout(() => {
                 store.setNavbar(true);
-                // We might need to reload sys info in store
-                window.location.href = '/';
+                window.location.href = '/login';
             }, 1000);
         } else {
             retry -= 1;
