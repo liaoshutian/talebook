@@ -56,10 +56,11 @@ test.describe('Install Flow', () => {
         await expect(page.getByText('配置写入成功')).toBeVisible({ timeout: 5000 });
         await expect(page.getByText('API服务正常')).toBeVisible({ timeout: 10000 });
     
-        // Should verify installation, auto login, and redirect to home
+        // Should verify installation and redirect to home
         await expect(page).toHaveURL('/', { timeout: 15000 });
     
-        // Should see homepage content (user should be logged in)
+        // Should see homepage content
+        // Mock server returns static title "Talebook Mock" regardless of what we submitted
         await expect(page.getByText('Talebook Mock').first()).toBeVisible();
     });
 });
