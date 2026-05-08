@@ -56,10 +56,10 @@ test.describe('Install Flow', () => {
         await expect(page.getByText('配置写入成功')).toBeVisible({ timeout: 5000 });
         await expect(page.getByText('API服务正常')).toBeVisible({ timeout: 10000 });
     
-        // Should verify installation and redirect to login
-        await expect(page).toHaveURL('/login', { timeout: 15000 });
+        // Should verify installation, auto login, and redirect to home
+        await expect(page).toHaveURL('/', { timeout: 15000 });
     
-        // Should see login form
-        await expect(page.getByRole('heading', { name: /登录|Sign In|Login/i })).toBeVisible();
+        // Should see homepage content (user should be logged in)
+        await expect(page.getByText('Talebook Mock').first()).toBeVisible();
     });
 });

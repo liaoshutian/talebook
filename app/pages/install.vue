@@ -171,17 +171,46 @@ const rules = {
     },
 };
 
+const do_auto_login = async () => {
+    var loginData = new URLSearchParams();
+    loginData.append('username', username.value);
+    loginData.append('password', password.value);
+
+    try {
+        const rsp = await fetch('/api/user/sign_in', {
+            method: 'POST',
+            body: loginData,
+            credentials: 'include',
+        });
+        const data = await rsp.json();
+
+        if (data.err === 'ok') {
+            const info = await $backend('/user/info');
+            store.login(info);
+            store.setNavbar(true);
+            window.location.href = '/';
+        } else {
+            tips.value += `<br/>${$t('install.loginFailed')}`;
+            setTimeout(() => {
+                window.location.href = '/login';
+            }, 2000);
+        }
+    } catch (e) {
+        console.error(e);
+        tips.value += `<br/>${$t('install.loginFailed')}`;
+        setTimeout(() => {
+            window.location.href = '/login';
+        }, 2000);
+    }
+};
+
 const check_install = () => {
     fetch('/api/index').then( rsp => {
         if ( rsp.status == 200 ) {
             tips.value += `<br/>${$t('install.apiServiceNormal')}<br/>${$t('install.installSuccessRedirect')}`;
-            
-            // force refresh index.html logic equivalent
-            // Fetching random param to bypass cache not strictly needed if we just nav
-            // But let's follow logic: reload user/sys info then push
+
             setTimeout(() => {
-                store.setNavbar(true);
-                window.location.href = '/login';
+                do_auto_login();
             }, 1000);
         } else {
             retry -= 1;

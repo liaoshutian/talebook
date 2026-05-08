@@ -581,12 +581,13 @@
     "passRule": "8 ~ 20 characters",
     "emailRule": "Invalid email format",
     "apiServiceNormal": "API service is normal",
-    "installSuccessRedirect": "Installation successful, redirecting to homepage",
+    "installSuccessRedirect": "Installation successful, logging in...",
     "timeoutRefresh": "Timeout, please refresh and try again",
     "writingConfig": "Writing configuration file...",
     "configWriteSuccess": "Configuration written successfully!",
     "checkingServer": "Checking server...",
-    "networkError": "Network error"
+    "networkError": "Network error",
+    "loginFailed": "Auto login failed, please login manually"
   },
   "captcha": {
     "title": "CAPTCHA",
