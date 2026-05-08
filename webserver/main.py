@@ -8,6 +8,7 @@ import sys
 from gettext import gettext as _
 
 import tornado.httpserver
+import tornado.httputil
 import tornado.ioloop
 import tornado.log
 from social_tornado.models import init_social
@@ -18,6 +19,106 @@ from tornado.options import define, options
 
 from webserver import loader, models, social_routes, handlers
 from webserver.services import AsyncService
+
+
+def _fix_multipart_parsing():
+    try:
+        from tornado.httputil import parse_multipart_form_data
+        from tornado import httputil
+    except ImportError:
+        logging.warning("Failed to import tornado modules for patching")
+        return
+
+    _original_parse = parse_multipart_form_data
+
+    def _sanitize_filename_for_header(filename):
+        try:
+            filename.encode('ascii')
+            return filename
+        except UnicodeEncodeError:
+            sanitized = re.sub(r'[\x00-\x1f\x7f-\xff]', '_', filename)
+            sanitized = re.sub(r'[";=\\]', '_', sanitized)
+            return sanitized
+
+    def _sanitize_multipart_body(body, content_type):
+        try:
+            boundary = None
+            if "boundary=" in content_type:
+                match = re.search(r'boundary=(.+?)(?:;|$)', content_type)
+                if match:
+                    boundary = match.group(1).strip('"')
+            if not boundary:
+                return None
+
+            boundary_bytes = boundary.encode('utf-8')
+            body_parts = body.split(b"--" + boundary_bytes)
+            if len(body_parts) < 2:
+                return None
+
+            sanitized_parts = [body_parts[0]]
+
+            for part in body_parts[1:]:
+                if not part or part.strip() in (b"--", b""):
+                    sanitized_parts.append(part)
+                    continue
+
+                try:
+                    part_str = part.decode('utf-8', errors='replace')
+                except:
+                    sanitized_parts.append(part)
+                    continue
+
+                if 'filename=' in part_str:
+                    filename_pattern = r'filename="([^"]*)"'
+                    match = re.search(filename_pattern, part_str)
+
+                    if match:
+                        original_filename = match.group(1)
+                        try:
+                            original_filename.encode('ascii')
+                            sanitized_parts.append(part)
+                            continue
+                        except UnicodeEncodeError:
+                            new_filename = _sanitize_filename_for_header(original_filename)
+                            new_part_str = re.sub(
+                                filename_pattern,
+                                f'filename="{new_filename}"',
+                                part_str
+                            )
+                            new_part = new_part_str.encode('utf-8')
+                            sanitized_parts.append(new_part)
+                            logging.info(f"Sanitized non-ASCII filename: {original_filename} -> {new_filename}")
+                            continue
+
+                sanitized_parts.append(part)
+
+            return b"--" + boundary_bytes + b"\r\n" + b"\r\n--".join(sanitized_parts)
+        except Exception as e:
+            logging.error(f"Failed to sanitize multipart body: {e}")
+            return None
+
+    def patched_parse_multipart_form_data(
+        content_type, body, args=None, files=None, boundary=None
+    ):
+        try:
+            return _original_parse(content_type, body, args, files, boundary)
+        except Exception as e:
+            error_str = str(e)
+            if "Invalid header value" in error_str or "Invalid multipart" in error_str:
+                logging.warning(f"Failed to parse multipart data: {e}, attempting to sanitize")
+                sanitized_body = _sanitize_multipart_body(body, content_type)
+                if sanitized_body:
+                    try:
+                        return _original_parse(content_type, sanitized_body, args, files, boundary)
+                    except Exception:
+                        pass
+            raise
+
+    httputil.parse_multipart_form_data = patched_parse_multipart_form_data
+    logging.info("Patched Tornado multipart/form-data parser for non-ASCII filename support")
+
+
+_fix_multipart_parsing()
 
 CONF = loader.get_settings()
 define("host", default="", type=str, help=_("The host address on which to listen"))
