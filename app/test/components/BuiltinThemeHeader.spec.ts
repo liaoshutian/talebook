@@ -111,3 +111,20 @@ describe('BuiltinThemeHeader.vue search', () => {
         wrapper.unmount();
     });
 });
+
+describe('BuiltinThemeHeader.vue drawer', () => {
+    it('fully closes the light-gray drawer from the menu button', async () => {
+        const wrapper = mountHeader('light-gray');
+        const component = wrapper.findComponent(BuiltinThemeHeader);
+        const header = component.vm as unknown as { sidebar: boolean };
+
+        expect(component.find('.tb-theme-nav-toggle .mdi-menu').exists()).toBe(true);
+        expect(header.sidebar).toBe(true);
+
+        await component.get('.tb-theme-nav-toggle').trigger('click');
+
+        expect(header.sidebar).toBe(false);
+        expect(component.classes()).not.toContain('tb-theme-rail');
+        wrapper.unmount();
+    });
+});
