@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 
+import importlib
 import logging
-import requests
 import traceback
-from webserver.i18n import _
+from threading import Lock
+
+import requests
+
 from webserver.constants import CHROME_HEADERS, META_SOURCE_GOOGLE, META_SOURCE_AMAZON
+from webserver.i18n import _
 
 KEY = "Calibre"
 
@@ -15,12 +19,52 @@ _SOURCE_TO_PLUGIN = {
     "amazon": "Amazon.com",
 }
 
+_PLUGIN_CLASSES = {
+    "Google": ("calibre.ebooks.metadata.sources.google", "GoogleBooks"),
+    "Amazon.com": ("calibre.ebooks.metadata.sources.amazon", "Amazon"),
+}
+
+
+class CalibreMetadataPluginUnavailable(RuntimeError):
+    """The configured metadata source is absent from Calibre's runtime registry."""
+
 
 class CalibreMetadataApi:
     """使用 Calibre 内置的 Google Books 和 Amazon.com 插件查询书籍元数据"""
 
     ALLOWED_PLUGINS = frozenset({"Google", "Amazon.com"})
     _patched = False
+    _plugins_registered = False
+    _plugin_lock = Lock()
+
+    @classmethod
+    def _ensure_plugins_registered(cls):
+        """Restore identify plugins omitted by the no-Qt slim built-in list."""
+        if cls._plugins_registered:
+            return
+
+        from calibre.customize import ui
+
+        with cls._plugin_lock:
+            if cls._plugins_registered:
+                return
+            registered = {plugin.name for plugin in ui.metadata_plugins({"identify"})}
+            for name in sorted(cls.ALLOWED_PLUGINS - registered):
+                module_name, class_name = _PLUGIN_CLASSES[name]
+                try:
+                    plugin_class = getattr(importlib.import_module(module_name), class_name)
+                    plugin = ui.initialize_plugin(plugin_class)
+                    ui._initialized_plugins.append(plugin)
+                    logging.info("已注册 slim runtime 缺失的 Calibre 元数据插件：%s", name)
+                except Exception as err:
+                    logging.exception("无法注册 Calibre 元数据插件 %s", name)
+                    raise CalibreMetadataPluginUnavailable("Calibre metadata plugin unavailable: %s" % name) from err
+
+            registered = {plugin.name for plugin in ui.metadata_plugins({"identify"})}
+            missing = cls.ALLOWED_PLUGINS - registered
+            if missing:
+                raise CalibreMetadataPluginUnavailable("Calibre metadata plugins unavailable: %s" % ", ".join(sorted(missing)))
+            cls._plugins_registered = True
 
     @classmethod
     def _ensure_patched(cls):
@@ -45,6 +89,7 @@ class CalibreMetadataApi:
     def _get_amazon_plugin(cls):
         from calibre.customize.ui import metadata_plugins
 
+        cls._ensure_plugins_registered()
         amazon_plugin = None
         for plugin in metadata_plugins({"identify"}):
             if plugin.name == "Amazon.com":
@@ -56,6 +101,7 @@ class CalibreMetadataApi:
     def _identify(cls, timeout=30, source=None, **kwargs):
         from calibre.ebooks.metadata.sources.identify import identify
 
+        cls._ensure_plugins_registered()
         cls._ensure_patched()
         log, abort = cls._make_log_abort()
         return identify(log, abort, allowed_plugins={source}, timeout=timeout, **kwargs)
@@ -96,6 +142,8 @@ class CalibreMetadataApi:
                     # Calibre Google 插件的评分是 0-5，乘以 2 转换为 0-10
                     result.rating = int(result.rating) * 2 if result.rating is not None else 0
             return results[:1]
+        except CalibreMetadataPluginUnavailable:
+            raise
         except Exception as e:
             logging.error(_("CalibreMetadataApi ISBN 查询失败 isbn=%s: %s"), isbn, e)
             logging.error(traceback.format_exc())
@@ -127,6 +175,8 @@ class CalibreMetadataApi:
                     if amazon_plugin and amazon_plugin.cached_cover_url_is_reliable:
                         result.cover_url = amazon_plugin.get_cached_cover_url(result.identifiers)
             return results[:3]
+        except CalibreMetadataPluginUnavailable:
+            raise
         except Exception as e:
             logging.error(_("CalibreMetadataApi 书名查询失败 title=%s: %s"), title, e)
             return None
