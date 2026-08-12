@@ -104,3 +104,5 @@ docker/seed/
 demo-data/
 node_modules
 mod
+.vercel
+.env*

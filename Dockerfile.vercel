@@ -1,0 +1,80 @@
+# syntax=docker/dockerfile:1.6
+
+# Vercel builds this repository-owned frontend so the demo follows the selected
+# Git revision instead of serving the frontend bundled in the runtime image.
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /build
+COPY app/package.json app/package-lock.json* ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY app/ ./
+RUN npm run build-spa && \
+    rm -rf dist && \
+    cp -r .output/public dist && \
+    if [ ! -f dist/index.html ]; then cp dist/200.html dist/index.html; fi && \
+    mkdir -p /app-static && \
+    cp -r dist package.json package-lock.json /app-static/
+
+# Reuse the published Talebook runtime for Calibre and system dependencies,
+# then overlay the application code from this Git revision.
+FROM talebook/talebook@sha256:a221a22372344c053da90ee0d3bd1742b42be8945f090a259b5ce72f0db79661 AS vercel-demo
+
+USER root
+WORKDIR /var/www/talebook
+
+COPY server.py ./
+COPY webserver/ ./webserver/
+COPY docker/vercel/start.sh ./docker/vercel/start.sh
+COPY docker/vercel/bootstrap.sh ./docker/vercel/bootstrap.sh
+COPY docker/vercel/gateway.py ./docker/vercel/gateway.py
+COPY docker/status_page.html ./status/status_page.html
+COPY docker/vercel/nginx.conf /etc/nginx/nginx.conf
+COPY conf/nginx/talebook.conf /etc/nginx/conf.d/talebook.conf
+COPY docker/vercel/supervisor.conf /etc/supervisor/conf.d/talebook.conf
+RUN rm -rf app/dist/logo
+COPY --from=frontend-builder /app-static/ ./app/
+COPY --from=frontend-builder /app-static/dist/logo/ /prebuilt/books/logo/
+COPY docker/vercel/auto.py /prebuilt/books/settings/auto.py
+
+RUN rm -rf app/dist/logo /data && \
+    ln -s /data/books/logo app/dist/logo && \
+    ln -s /tmp/talebook/data /data && \
+    setcap -r /usr/sbin/nginx && \
+    chmod +x docker/vercel/start.sh docker/vercel/bootstrap.sh docker/vercel/gateway.py server.py webserver/migrate_db.py && \
+    rm -f webserver/*.pyc && \
+    sed -i '/listen 443 ssl http2;/d; /ssl_certificate/d; /ssl_certificate_key/d' /etc/nginx/conf.d/talebook.conf && \
+    sed -i 's#listen 80;#listen 127.0.0.1:8081;#; s#access_log  /data/log/nginx/talebook-access.log;#access_log /tmp/talebook/log/nginx/access.log;#; s#error_log   /data/log/nginx/talebook-error.log;#error_log /tmp/talebook/log/nginx/error.log warn;#; s#/var/www/talebook/status/status.json#/tmp/talebook/status/status.json#; s#/var/www/talebook/status/status_page.html#/tmp/talebook/status/status_page.html#' /etc/nginx/conf.d/talebook.conf && \
+    sed -i 's#/var/run/supervisor.sock#/tmp/talebook/run/supervisor.sock#g; s#/var/log/supervisor/supervisord.log#/tmp/talebook/log/supervisord.log#; s#/var/run/supervisord.pid#/tmp/talebook/run/supervisord.pid#; s#childlogdir=/var/log/supervisor#childlogdir=/tmp/talebook/log#' /etc/supervisor/supervisord.conf && \
+    printf 'VERSION = "vercel-demo"\nARCH = "amd64"\n' > webserver/version.py
+
+# Start a metadata-clean final stage. The published Talebook image declares
+# VOLUME /data, but Vercel Functions only expose writable /tmp scratch space and
+# cannot provision Docker volumes. Copying the filesystem through scratch drops
+# that inherited OCI volume declaration while keeping /data as our /tmp symlink.
+FROM scratch AS vercel-runtime
+COPY --from=vercel-demo / /
+
+ENV PATH=/usr/lib/talebook-calibre/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    DEBIAN_FRONTEND=noninteractive \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    CALIBRE_STANDALONE_CONVERTER=1 \
+    CALIBRE_STANDALONE_FORBID_QT=1 \
+    TALEBOOK_CALIBRE_RUNTIME=/usr/lib/calibre \
+    TALEBOOK_CALIBRE_RESOURCES=/usr/share/calibre \
+    TALEBOOK_CALIBRE_PLUGINS=/usr/lib/calibre/calibre/plugins \
+    TALEBOOK_CALIBRE_BIN=/usr/lib/talebook-calibre/bin \
+    TALEBOOK_CALIBRE_LIB=/usr/lib/talebook-calibre/lib \
+    PYTHONPATH=/usr/lib/calibre \
+    LD_LIBRARY_PATH=/usr/lib/talebook-calibre/lib \
+    FONTCONFIG_PATH=/etc/talebook-calibre/fonts \
+    FONTCONFIG_FILE=/etc/talebook-calibre/fonts/fonts.conf \
+    TZ=Asia/Shanghai \
+    LANG=C.UTF-8
+
+USER root
+WORKDIR /var/www/talebook
+
+# Vercel container functions use port 80 by default. The cold-start gateway
+# owns that port and forwards ready requests to Nginx on loopback.
+EXPOSE 80
+CMD ["/var/www/talebook/docker/vercel/start.sh"]

@@ -1,0 +1,15 @@
+**
+!app/**
+!conf/nginx/nginx.conf
+!conf/nginx/talebook.conf
+!conf/supervisor/talebook.conf
+!docker/start.sh
+!docker/status_page.html
+!docker/vercel/**
+!requirements.txt
+!server.py
+!webserver/**
+app/.nuxt
+app/.output
+app/dist
+app/node_modules

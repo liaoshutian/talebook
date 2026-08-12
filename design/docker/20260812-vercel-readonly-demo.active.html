@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Talebook 无持久化只读演示站的 Vercel 容器部署方案。" />
+    <link rel="icon" href="data:," />
+    <title>在 Vercel 发布无持久化只读 Talebook 演示站 · ACTIVE</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f7fb;
+        --panel: #fff;
+        --ink: #172033;
+        --muted: #5e697c;
+        --line: #d9e1ec;
+        --accent: #3157c8;
+        --accent-soft: #edf2ff;
+        --green: #17694a;
+        --green-soft: #e8f5ef;
+        --orange: #9a510d;
+        --orange-soft: #fff3e5;
+        --red: #963c3c;
+        --red-soft: #fdeeee;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body { margin: 0; color: var(--ink); background: linear-gradient(150deg, #edf2ff 0, var(--bg) 26rem); font-family: var(--sans); line-height: 1.65; }
+      a { color: var(--accent); text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code { padding: .12em .36em; border-radius: 5px; background: #eef1f6; font-family: var(--mono); overflow-wrap: anywhere; }
+      .skip { position: fixed; top: 8px; left: 8px; z-index: 5; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip:focus { transform: translateY(0); }
+      .page { width: min(1080px, calc(100vw - 32px)); margin: auto; padding: 28px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 14px 36px rgba(23, 32, 51, .07); }
+      .hero { position: relative; margin-bottom: 18px; padding: 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -50px; bottom: -80px; width: 270px; height: 270px; border-radius: 50%; background: radial-gradient(circle, rgba(49,87,200,.22), transparent 68%); content: ""; }
+      h1 { position: relative; z-index: 1; margin: 0 0 12px; max-width: 850px; font-size: clamp(30px, 5vw, 49px); line-height: 1.12; letter-spacing: -.025em; }
+      .hero p { position: relative; z-index: 1; max-width: 820px; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { padding: 5px 11px; border-radius: 999px; color: #4c5870; background: #edf1f6; font-size: 12px; font-weight: 750; }
+      .chip.wip { color: var(--orange); background: var(--orange-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .card { margin-bottom: 18px; padding: 27px 29px; scroll-margin-top: 16px; }
+      h2 { margin: 0 0 14px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 0 0 8px; font-size: 16px; }
+      p { margin: 0 0 12px; }
+      p, li, td { color: #2d394d; font-size: 14px; }
+      ul, ol { margin: 9px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+      .quote, .callout { padding: 14px 16px; border-radius: 14px; background: #f8fafc; border: 1px solid var(--line); }
+      .quote { color: #25375e; border-left: 4px solid var(--accent); }
+      .good { border-color: #b9ddcf; background: var(--green-soft); }
+      .warn { border-color: #efd3a6; background: var(--orange-soft); }
+      .danger { border-color: #e6b8b8; background: var(--red-soft); }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .box { padding: 17px; border: 1px solid var(--line); border-radius: 15px; background: #fff; }
+      .box.primary { border-color: #bfcdf7; background: var(--accent-soft); }
+      .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }
+      .step { position: relative; padding: 16px; min-height: 132px; border: 1px solid var(--line); border-radius: 15px; background: #fff; }
+      .step + .step::before { position: absolute; top: 17px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; border: 1px solid #bfcdf7; border-radius: 50%; color: var(--accent); background: #fff; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step span { color: var(--accent); font: 800 10px/1 var(--mono); letter-spacing: .08em; }
+      .step p { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 700px; border-collapse: collapse; background: #fff; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #536077; background: #f7f9fc; font-size: 12px; }
+      tr:last-child td { border-bottom: 0; }
+      th:last-child, td:last-child { border-right: 0; }
+      .yes { color: var(--green); font-weight: 800; }
+      .no { color: var(--red); font-weight: 800; }
+      .pending { color: var(--orange); font-weight: 800; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; border-radius: 14px; color: #edf3ff; background: #202b42; font: 13px/1.65 var(--mono); }
+      footer { color: var(--muted); text-align: center; font-size: 12px; }
+      @media (max-width: 760px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { padding: 22px 19px; border-radius: 16px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: auto; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @media print { body { background: #fff; } .page { width: 100%; } .hero, .card { box-shadow: none; } .skip { display: none; } }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">跳到正文</a>
+    <div class="page">
+      <header class="hero">
+        <h1>在 Vercel 发布无持久化只读 Talebook 演示站</h1>
+        <p>以仓库分支为版本源，在 Vercel Container Function 中运行完整 Talebook；实例只提供公开浏览、阅读和受限登录体验，所有运行期状态允许在休眠、扩缩容或重建后丢失。</p>
+        <div class="chips" aria-label="方案元信息">
+          <span class="chip active">状态：ACTIVE</span>
+          <span class="chip">创建日期：2026-08-12</span>
+          <span class="chip">所属模块：docker</span>
+          <span class="chip">影响范围：Vercel / Docker / Demo 配置</span>
+          <span class="chip">需求来源：用户对话</span>
+        </div>
+      </header>
+
+      <main id="main">
+        <section class="card">
+          <h2>1. 原始诉求</h2>
+          <div class="quote">“我要把 liaoshutian/talebook 仓库部署到 vercel 上面。”</div>
+          <p>经逐项确认：本次仅作 Demo，不要求持久存储；启用内置只读演示模式；工作分支为 <code>deploy/vercel</code>；先创建 Preview 部署，不直接修改 <code>master</code> 或生产环境。</p>
+        </section>
+
+        <section class="card">
+          <h2>2. 目标与边界</h2>
+          <div class="grid">
+            <article class="box primary">
+              <h3>目标</h3>
+              <ul>
+                <li>一个 URL 同时提供 Talebook SPA、Tornado API、阅读与下载能力。</li>
+                <li>部署内容可追溯到 <code>liaoshutian/talebook</code> 的 <code>deploy/vercel</code> 分支。</li>
+                <li>游客可浏览预置公版书，账号 <code>demo</code> / <code>talebook</code> 可体验只读管理界面。</li>
+                <li>公开请求不能上传、编辑、删除、推送或持久修改系统设置。</li>
+              </ul>
+            </article>
+            <article class="box">
+              <h3>非目标</h3>
+              <ul>
+                <li>不保证书库、用户、Cookie、阅读进度或访问计数持久保存。</li>
+                <li>不接入 Vercel Blob、外部数据库、对象存储或持久磁盘。</li>
+                <li>不把本次 Preview 提升为生产部署，不配置自定义域名。</li>
+                <li>不改变 Talebook 既有业务接口与只读演示策略。</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>3. 用户能力矩阵</h2>
+          <div class="table-wrap" role="region" aria-label="用户能力矩阵" tabindex="0">
+            <table>
+              <thead><tr><th>能力</th><th>游客</th><th>Demo 账号</th><th>实例重建后</th><th>验收口径</th></tr></thead>
+              <tbody>
+                <tr><td>浏览书库、封面与详情</td><td class="yes">支持</td><td class="yes">支持</td><td class="yes">预置内容恢复</td><td><code>/api/index</code> 返回预置书籍</td></tr>
+                <tr><td>在线阅读与下载</td><td class="yes">支持</td><td class="yes">支持</td><td class="yes">预置内容恢复</td><td>阅读与文件响应可用</td></tr>
+                <tr><td>登录并查看管理界面</td><td>不适用</td><td class="yes">伪管理员只读体验</td><td>账号首次登录自动重建</td><td><code>demo</code> / <code>talebook</code> 登录成功</td></tr>
+                <tr><td>上传、编辑、删除、推送、配置写入</td><td class="no">禁止</td><td class="no">禁止</td><td>无状态</td><td>写请求返回 <code>demo.read_only</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>4. 现状与证据</h2>
+          <div class="table-wrap" role="region" aria-label="现状证据" tabindex="0">
+            <table>
+              <thead><tr><th>观察</th><th>仓库或平台证据</th><th>结论</th></tr></thead>
+              <tbody>
+                <tr><td>Talebook 是 Calibre + Tornado + Nginx + Nuxt 的多进程应用</td><td><code>Dockerfile</code>、<code>conf/supervisor/talebook.conf</code></td><td>不能仅按普通 Nuxt 项目部署，否则 API 与阅读能力缺失。</td></tr>
+                <tr><td>业务数据默认写入 <code>/data/books</code></td><td><code>webserver/settings.py</code>、<code>docker/start.sh</code></td><td>必须明确接受容器无状态和实例重置。</td></tr>
+                <tr><td>项目已有服务端只读演示策略</td><td><code>webserver/demo_mode.py</code>、<code>tests/test_demo_mode.py</code></td><td>复用既有能力，不新增另一套权限旁路。</td></tr>
+                <tr><td>Vercel 可从根目录 <code>Dockerfile.vercel</code> 构建 HTTP 容器</td><td>Vercel Container Function 官方文档，2026-08-12 核对</td><td>单容器可同时运行现有 Nginx 与 Tornado；默认入口端口为 80。</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>5. 方案</h2>
+          <div class="callout good"><strong>方案结论：</strong>新增根目录 <code>Dockerfile.vercel</code>。前端阶段从当前 Git revision 构建 Nuxt SPA；运行阶段复用固定 digest 的官方 Talebook 镜像中的 Calibre 与系统依赖，再覆盖当前 revision 的前后端代码和服务配置。最终以 <code>scratch</code> 阶段复制根文件系统，清除基础镜像继承的 <code>/data</code> OCI Volume 元数据，确保 Vercel 能在调用前创建只读根文件系统。固定 digest 避免运行依赖随 <code>latest</code> 漂移。</div>
+          <div class="flow" aria-label="部署与请求流程">
+            <article class="step"><span>SOURCE</span><b>Git 分支</b><p><code>deploy/vercel</code> 保存容器入口、只读配置、测试与 ACTIVE 方案。</p></article>
+            <article class="step"><span>BUILD</span><b>构建镜像</b><p>Nuxt SPA 使用仓库源码构建；Calibre 运行时复用发布镜像，覆盖当前后端代码。</p></article>
+            <article class="step"><span>BOOT</span><b>绑定端口</b><p>Gateway 立即监听 <code>0.0.0.0:80</code>，首个请求在异步初始化完成前保持等待。</p></article>
+            <article class="step"><span>INIT</span><b>初始化临时数据</b><p>Bootstrap 将预置书库复制到 <code>/tmp/talebook/data</code>，执行数据库迁移并启动 Tornado。</p></article>
+            <article class="step"><span>REQUEST</span><b>同域服务</b><p>就绪后 Gateway 转发至 <code>127.0.0.1:8081</code> 的 Nginx；Nginx 提供 SPA 并代理 API。</p></article>
+          </div>
+          <pre aria-label="目标部署命令"><code>vercel deploy . -y --no-wait
+vercel inspect &lt;preview-url&gt;</code></pre>
+        </section>
+
+        <section class="card">
+          <h2>6. 影响、风险与回滚</h2>
+          <div class="grid">
+            <article class="box primary"><h3>影响范围</h3><p>新增 Vercel 专用 Dockerfile、只读种子配置、部署配置测试和本方案。普通 <code>Dockerfile</code>、Docker Compose、业务接口及默认配置保持不变。</p></article>
+            <article class="box"><h3>回滚单位</h3><p>删除 Vercel Preview 项目或回退 <code>deploy/vercel</code> 分支即可；无持久数据需要迁移或清理，<code>master</code> 不受影响。</p></article>
+          </div>
+          <div class="callout danger"><strong>主要风险：</strong>容器会缩容至零且无持久磁盘，因此并发实例的临时状态不共享，实例重建后登录会话与运行期修改会消失；该行为是本次 Demo 明确接受的产品边界。Demo 凭据和可分享 Preview 链接均是公开体验入口。</div>
+          <div class="callout warn"><strong>运行风险：</strong>镜像包含 Calibre，最终函数镜像为 393.08 MB；线上首次 API 冷启动实测约 9.4 秒。Vercel 运行时禁止写根文件系统和使用额外 Linux capabilities，因此所有运行期写入集中到 <code>/tmp/talebook</code>，Nginx 以 root 身份运行但没有附加 capabilities，隔离边界由 Vercel microVM 提供。</div>
+          <div class="callout warn"><strong>依赖风险：</strong>前端构建成功，但 <code>npm</code> 报告 42 个既有依赖漏洞（3 low、12 moderate、21 high、6 critical）以及大于 500 kB 的 chunk；本次部署适合作为短期 Demo，不据此宣称生产就绪。</div>
+        </section>
+
+        <section class="card">
+          <h2>7. 测试计划与结果</h2>
+          <div class="table-wrap" role="region" aria-label="测试计划" tabindex="0">
+            <table>
+              <thead><tr><th>验证层</th><th>实际命令或页面</th><th>预期</th><th>结果</th></tr></thead>
+              <tbody>
+                <tr><td>部署配置测试</td><td><code>pytest tests/test_vercel_deployment.py -v</code></td><td>入口覆盖当前源码，种子强制只读演示模式</td><td class="yes">3 项通过</td></tr>
+                <tr><td>既有只读策略</td><td><code>pytest tests/test_demo_mode_policy.py tests/test_demo_mode.py -v</code></td><td>登录、读取、写入拒绝与伪管理员策略通过</td><td class="yes">与部署配置合计 26 项通过</td></tr>
+                <tr><td>容器集成</td><td>以 <code>--read-only --cap-drop=ALL</code> 启动 amd64 镜像，首个请求访问 <code>/api/welcome</code></td><td>完整服务启动且只读约束生效</td><td class="yes">4.87 秒后返回 HTTP 200；登录与 10 本种子书验证通过</td></tr>
+                <tr><td>页面连通性</td><td><code>curl</code> 请求 Preview 首页、用户信息与书库索引</td><td>SPA 和关键接口均返回有效响应</td><td class="yes">首页 HTTP 200；无前端源码或视觉行为改动，未追加浏览器渲染检查</td></tr>
+                <tr><td>质量门禁</td><td><code>make check-design</code>、<code>make lint-py</code>、<code>cd app &amp;&amp; npm run lint</code></td><td>相关门禁通过</td><td class="yes">Python 无错误；前端 0 errors、193 个既有 warnings；方案校验通过</td></tr>
+                <tr><td>Vercel Preview</td><td><code>vercel inspect talebook-mybb2180c-rexliao.vercel.app</code>；<code>curl</code> 冷启动 API、登录和注册</td><td>部署 Ready，完整服务与只读策略可用</td><td class="yes">Ready；冷启动 API 9.39 秒后 HTTP 200；Demo 登录成功；注册返回 <code>demo.read_only</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>8. 决策记录</h2>
+          <ol>
+            <li><strong>2026-08-12：</strong>用户接受不使用持久存储，仅作为 Demo。</li>
+            <li><strong>2026-08-12：</strong>用户确认启用内置单账号只读演示模式，账号为 <code>demo</code>。</li>
+            <li><strong>2026-08-12：</strong>用户指定工作分支 <code>deploy/vercel</code>，并确认先发 Preview。</li>
+            <li><strong>2026-08-12：</strong>不把前后端拆成两个 Vercel 服务；单容器保留现有同域路由并避免依赖仍在 Private Beta 的 Services。</li>
+            <li><strong>2026-08-12：</strong>真实 Preview 的首个静态响应会结束函数调用并冻结后台初始化，因此增加等待就绪的 TCP Gateway，让冷启动请求覆盖整个初始化生命周期。</li>
+            <li><strong>2026-08-12：</strong>验收优先使用 <code>curl</code>；本次未修改前端源码或视觉行为，不重复启动 Chrome。</li>
+          </ol>
+        </section>
+      </main>
+      <footer>Talebook internal design · docker · ACTIVE · 2026-08-12</footer>
+    </div>
+  </body>
+</html>
