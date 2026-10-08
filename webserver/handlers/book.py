@@ -1726,10 +1726,12 @@ class BookTxtInit(BaseHandler):
         if test_ready != "0":
             return {"err": "ok", "msg": "未解析完成"}
 
-        # 若未解析则计算预计等待时间，至少2分钟
-        wait = min(120, os.path.getsize(fpath) / (1024 * 1024) * 15)
-        ExtractService().parse_txt_content(bid, fpath)
-        que_len = ExtractService().get_queue("parse_txt_content").qsize()
+        # Allow 30–120 seconds to parse, even for very small TXT files.
+        wait = min(120, max(30, os.path.getsize(fpath) / (1024 * 1024) * 15))
+        # Count jobs already queued, excluding the job we are about to enqueue.
+        service = ExtractService()
+        que_len = service.get_queue("parse_txt_content").qsize()
+        service.parse_txt_content(bid, fpath)
         return {
             "err": "ok",
             "msg": "已加入队列",
