@@ -319,25 +319,27 @@ const init = () => {
                 name.value = rsp.data.name;
                 getNovelContent(0);
             } else {
-                wait.value = parseInt(rsp.data.wait);
-                let queLen = parseInt(rsp.data.que);
+                wait.value = Math.max(1, Math.ceil(Number(rsp.data.wait) || 0));
+                const queLen = Number(rsp.data.que) || 0;
                 name.value = rsp.data.name;
-                if (queLen > 0) {
-                    tip.title = t('book.inQueue');
-                    tip.content = t('book.queueMessage', { count: queLen });
-                    return;
-                }
+                tip.title = queLen > 0 ? t('book.inQueue') : t('book.parsing');
+                tip.content = queLen > 0
+                    ? t('book.queueMessage', { count: queLen })
+                    : t('book.parsingMessage', { seconds: wait.value });
+                // Queue position must not prevent checking whether parsing has completed.
+                if (intvl) clearInterval(intvl);
+                let checking = false;
                 intvl = setInterval(() => {
                     wait.value--;
-                    tip.content = t('book.parsingMessage', { seconds: wait.value });
-                    if (wait.value <= 0) {
-                        clearInterval(intvl);
-                        tip.content = t('book.timeoutMessage');
-                        tip.title = t('book.parseTimeout');
-                        return;
+                    if (queLen > 0) tip.title = t('book.parsing');
+                    if (wait.value > 0) {
+                        tip.content = t('book.parsingMessage', { seconds: wait.value });
                     }
-                    if (wait.value % 5 !== 0) return;
-                    $backend(`/book/txt/init?id=${bookid}&test=1`,)
+                    // Check once more at the deadline before announcing a timeout.
+                    if (wait.value > 0 && wait.value % 5 !== 0) return;
+                    if (checking) return;
+                    checking = true;
+                    $backend(`/book/txt/init?id=${bookid}&test=1`)
                         .then(res => {
                             if (res.err === 'ok' && res.msg === '已解析') {
                                 inited.value = true;
@@ -345,8 +347,23 @@ const init = () => {
                                 name.value = res.data.name;
                                 getNovelContent(0);
                                 clearInterval(intvl);
+                                intvl = null;
+                            } else if (wait.value <= 0) {
+                                clearInterval(intvl);
+                                intvl = null;
+                                tip.content = t('book.timeoutMessage');
+                                tip.title = t('book.parseTimeout');
                             }
-                        });
+                        })
+                        .catch(() => {
+                            if (wait.value <= 0) {
+                                clearInterval(intvl);
+                                intvl = null;
+                                tip.content = t('book.timeoutMessage');
+                                tip.title = t('book.parseTimeout');
+                            }
+                        })
+                        .finally(() => { checking = false; });
                 }, 1000);
             }
         }).finally(() => {
